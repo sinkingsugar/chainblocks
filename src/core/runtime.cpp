@@ -371,56 +371,6 @@ CBlock *createBlock(std::string_view name) {
     blkp->inlineBlockId = CBInlineBlocks::MathRShift;
   } else if (name == "Math.Abs") {
     blkp->inlineBlockId = CBInlineBlocks::MathAbs;
-  } else if (name == "Math.Exp") {
-    blkp->inlineBlockId = CBInlineBlocks::MathExp;
-  } else if (name == "Math.Exp2") {
-    blkp->inlineBlockId = CBInlineBlocks::MathExp2;
-  } else if (name == "Math.Expm1") {
-    blkp->inlineBlockId = CBInlineBlocks::MathExpm1;
-  } else if (name == "Math.Log") {
-    blkp->inlineBlockId = CBInlineBlocks::MathLog;
-  } else if (name == "Math.Log10") {
-    blkp->inlineBlockId = CBInlineBlocks::MathLog10;
-  } else if (name == "Math.Log2") {
-    blkp->inlineBlockId = CBInlineBlocks::MathLog2;
-  } else if (name == "Math.Log1p") {
-    blkp->inlineBlockId = CBInlineBlocks::MathLog1p;
-  } else if (name == "Math.Sqrt") {
-    blkp->inlineBlockId = CBInlineBlocks::MathSqrt;
-  } else if (name == "Math.Cbrt") {
-    blkp->inlineBlockId = CBInlineBlocks::MathCbrt;
-  } else if (name == "Math.Sin") {
-    blkp->inlineBlockId = CBInlineBlocks::MathSin;
-  } else if (name == "Math.Cos") {
-    blkp->inlineBlockId = CBInlineBlocks::MathCos;
-  } else if (name == "Math.Tan") {
-    blkp->inlineBlockId = CBInlineBlocks::MathTan;
-  } else if (name == "Math.Asin") {
-    blkp->inlineBlockId = CBInlineBlocks::MathAsin;
-  } else if (name == "Math.Acos") {
-    blkp->inlineBlockId = CBInlineBlocks::MathAcos;
-  } else if (name == "Math.Atan") {
-    blkp->inlineBlockId = CBInlineBlocks::MathAtan;
-  } else if (name == "Math.Sinh") {
-    blkp->inlineBlockId = CBInlineBlocks::MathSinh;
-  } else if (name == "Math.Cosh") {
-    blkp->inlineBlockId = CBInlineBlocks::MathCosh;
-  } else if (name == "Math.Tanh") {
-    blkp->inlineBlockId = CBInlineBlocks::MathTanh;
-  } else if (name == "Math.Asinh") {
-    blkp->inlineBlockId = CBInlineBlocks::MathAsinh;
-  } else if (name == "Math.Acosh") {
-    blkp->inlineBlockId = CBInlineBlocks::MathAcosh;
-  } else if (name == "Math.Atanh") {
-    blkp->inlineBlockId = CBInlineBlocks::MathAtanh;
-  } else if (name == "Math.Erf") {
-    blkp->inlineBlockId = CBInlineBlocks::MathErf;
-  } else if (name == "Math.Erfc") {
-    blkp->inlineBlockId = CBInlineBlocks::MathErfc;
-  } else if (name == "Math.TGamma") {
-    blkp->inlineBlockId = CBInlineBlocks::MathTGamma;
-  } else if (name == "Math.LGamma") {
-    blkp->inlineBlockId = CBInlineBlocks::MathLGamma;
   } else if (name == "Math.Ceil") {
     blkp->inlineBlockId = CBInlineBlocks::MathCeil;
   } else if (name == "Math.Floor") {
@@ -668,7 +618,223 @@ ALWAYS_INLINE CBChainState blocksActivation(T blocks, CBContext *context,
       assert(false);
     }
     try {
-      output = activateBlock(blk, context, input);
+      constexpr void *dispatch_table[] = {
+          // see CBInlineBlocks, must match
+          &&doDefault,        &&doNoopBlock,       &&doCoreConst,
+          &&doCoreIs,         &&doCoreIsNot,       &&doCoreAnd,
+          &&doCoreOr,         &&doCoreNot,         &&doCoreIsMore,
+          &&doCoreIsLess,     &&doCoreIsMoreEqual, &&doCoreIsLessEqual,
+          &&doCoreSleep,      &&doCoreInput,       &&doCoreTakeSeq,
+          &&doCoreTakeFloats, &&doCoreTakeTable,   &&doCorePush,
+          &&doCoreRepeat,     &&doCoreOnce,        &&doCoreGet,
+          &&doCoreSet,        &&doCoreRef,         &&doCoreUpdate,
+          &&doCoreSwap,       &&doMathAdd,         &&doMathSubtract,
+          &&doMathMultiply,   &&doMathDivide,      &&doMathXor,
+          &&doMathAnd,        &&doMathOr,          &&doMathMod,
+          &&doMathLShift,     &&doMathRShift,      &&doMathAbs,
+          &&doMathCeil,       &&doMathFloor,       &&doMathTrunc,
+          &&doMathRound};
+      goto *dispatch_table[blk->inlineBlockId];
+    doDefault : {
+      // NotInline
+      output = blk->activate(blk, context, &input);
+      goto errorCheck; // this block might use context errors
+    }
+    doNoopBlock : {
+      output = input;
+      continue;
+    }
+    doCoreConst : {
+      auto cblock = reinterpret_cast<chainblocks::ConstRuntime *>(blk);
+      output = cblock->core._value;
+      goto nextInput; // internal, no error or exception
+    }
+    doCoreIs : {
+      auto cblock = reinterpret_cast<chainblocks::IsRuntime *>(blk);
+      output = cblock->core.activate(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    doCoreIsNot : {
+      auto cblock = reinterpret_cast<chainblocks::IsNotRuntime *>(blk);
+      output = cblock->core.activate(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    doCoreAnd : {
+      auto cblock = reinterpret_cast<chainblocks::AndRuntime *>(blk);
+      output = cblock->core.activate(context, input);
+      goto errorCheck; // uses rebase etc
+    }
+    doCoreOr : {
+      auto cblock = reinterpret_cast<chainblocks::OrRuntime *>(blk);
+      output = cblock->core.activate(context, input);
+      goto errorCheck; // uses rebase etc
+    }
+    doCoreNot : {
+      auto cblock = reinterpret_cast<chainblocks::NotRuntime *>(blk);
+      output = cblock->core.activate(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    doCoreIsMore : {
+      auto cblock = reinterpret_cast<chainblocks::IsMoreRuntime *>(blk);
+      output = cblock->core.activate(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    doCoreIsLess : {
+      auto cblock = reinterpret_cast<chainblocks::IsLessRuntime *>(blk);
+      output = cblock->core.activate(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    doCoreIsMoreEqual : {
+      auto cblock = reinterpret_cast<chainblocks::IsMoreEqualRuntime *>(blk);
+      output = cblock->core.activate(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    doCoreIsLessEqual : {
+      auto cblock = reinterpret_cast<chainblocks::IsLessEqualRuntime *>(blk);
+      output = cblock->core.activate(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    doCoreSleep : {
+      auto cblock = reinterpret_cast<chainblocks::BlockWrapper<Pause> *>(blk);
+      output = cblock->block.activate(context, input);
+      goto errorCheck; // needs to check context state
+    }
+    doCoreInput : {
+      auto cblock = reinterpret_cast<chainblocks::BlockWrapper<Input> *>(blk);
+      output = cblock->block.activate(context, input);
+      goto errorCheck; // uses rebase etc
+    }
+    doCoreTakeSeq : {
+      auto cblock = reinterpret_cast<chainblocks::TakeRuntime *>(blk);
+      output = cblock->core.activateSeq(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    doCoreTakeFloats : {
+      auto cblock = reinterpret_cast<chainblocks::TakeRuntime *>(blk);
+      output = cblock->core.activateFloats(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    doCoreTakeTable : {
+      auto cblock = reinterpret_cast<chainblocks::TakeRuntime *>(blk);
+      output = cblock->core.activateTable(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    doCorePush : {
+      auto cblock = reinterpret_cast<chainblocks::PushRuntime *>(blk);
+      output = cblock->core.activate(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    doCoreRepeat : {
+      auto cblock = reinterpret_cast<chainblocks::RepeatRuntime *>(blk);
+      output = cblock->core.activate(context, input);
+      goto errorCheck; // needs context state checking
+    }
+    doCoreOnce : {
+      auto cblock = reinterpret_cast<chainblocks::BlockWrapper<Once> *>(blk);
+      output = cblock->block.activate(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    doCoreGet : {
+      auto cblock = reinterpret_cast<chainblocks::GetRuntime *>(blk);
+      output = cblock->core.activate(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    doCoreSet : {
+      auto cblock = reinterpret_cast<chainblocks::SetRuntime *>(blk);
+      output = cblock->core.activate(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    doCoreRef : {
+      auto cblock = reinterpret_cast<chainblocks::RefRuntime *>(blk);
+      output = cblock->core.activate(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    doCoreUpdate : {
+      auto cblock = reinterpret_cast<chainblocks::UpdateRuntime *>(blk);
+      output = cblock->core.activate(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    doCoreSwap : {
+      auto cblock = reinterpret_cast<chainblocks::SwapRuntime *>(blk);
+      output = cblock->core.activate(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    doMathAdd : {
+      auto cblock = reinterpret_cast<chainblocks::Math::AddRuntime *>(blk);
+      output = cblock->core.activate(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    doMathSubtract : {
+      auto cblock = reinterpret_cast<chainblocks::Math::SubtractRuntime *>(blk);
+      output = cblock->core.activate(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    doMathMultiply : {
+      auto cblock = reinterpret_cast<chainblocks::Math::MultiplyRuntime *>(blk);
+      output = cblock->core.activate(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    doMathDivide : {
+      auto cblock = reinterpret_cast<chainblocks::Math::DivideRuntime *>(blk);
+      output = cblock->core.activate(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    doMathXor : {
+      auto cblock = reinterpret_cast<chainblocks::Math::XorRuntime *>(blk);
+      output = cblock->core.activate(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    doMathAnd : {
+      auto cblock = reinterpret_cast<chainblocks::Math::AndRuntime *>(blk);
+      output = cblock->core.activate(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    doMathOr : {
+      auto cblock = reinterpret_cast<chainblocks::Math::OrRuntime *>(blk);
+      output = cblock->core.activate(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    doMathMod : {
+      auto cblock = reinterpret_cast<chainblocks::Math::ModRuntime *>(blk);
+      output = cblock->core.activate(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    doMathLShift : {
+      auto cblock = reinterpret_cast<chainblocks::Math::LShiftRuntime *>(blk);
+      output = cblock->core.activate(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    doMathRShift : {
+      auto cblock = reinterpret_cast<chainblocks::Math::RShiftRuntime *>(blk);
+      output = cblock->core.activate(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    doMathAbs : {
+      auto cblock = reinterpret_cast<chainblocks::Math::AbsRuntime *>(blk);
+      output = cblock->core.activate(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    doMathCeil : {
+      auto cblock = reinterpret_cast<chainblocks::Math::CeilRuntime *>(blk);
+      output = cblock->core.activate(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    doMathFloor : {
+      auto cblock = reinterpret_cast<chainblocks::Math::FloorRuntime *>(blk);
+      output = cblock->core.activate(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    doMathTrunc : {
+      auto cblock = reinterpret_cast<chainblocks::Math::TruncRuntime *>(blk);
+      output = cblock->core.activate(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    doMathRound : {
+      auto cblock = reinterpret_cast<chainblocks::Math::RoundRuntime *>(blk);
+      output = cblock->core.activate(context, input);
+      goto nextInput; // internal, no error or exception
+    }
+    errorCheck:
       if (!context->shouldContinue()) {
         switch (context->getState()) {
         case CBChainState::Return:
@@ -703,6 +869,7 @@ ALWAYS_INLINE CBChainState blocksActivation(T blocks, CBContext *context,
                  << std::string(blk->name(blk));
       throw; // bubble up
     }
+  nextInput:
     input = output;
   }
   return CBChainState::Continue;
@@ -1422,18 +1589,9 @@ void validateConnection(ValidationContext &ctx) {
       ctx.bottom->inlineBlockId = CBInlineBlocks::CoreTakeSeq;
     } else if (previousOutput.basicType == Table) {
       ctx.bottom->inlineBlockId = CBInlineBlocks::CoreTakeTable;
-    } else if (previousOutput.basicType >= Int2 &&
-               previousOutput.basicType <= Int16) {
-      ctx.bottom->inlineBlockId = CBInlineBlocks::CoreTakeInts;
     } else if (previousOutput.basicType >= Float2 &&
                previousOutput.basicType <= Float4) {
       ctx.bottom->inlineBlockId = CBInlineBlocks::CoreTakeFloats;
-    } else if (previousOutput.basicType == Color) {
-      ctx.bottom->inlineBlockId = CBInlineBlocks::CoreTakeColor;
-    } else if (previousOutput.basicType == Bytes) {
-      ctx.bottom->inlineBlockId = CBInlineBlocks::CoreTakeBytes;
-    } else if (previousOutput.basicType == String) {
-      ctx.bottom->inlineBlockId = CBInlineBlocks::CoreTakeString;
     }
   }
 
