@@ -110,10 +110,12 @@ else()
   endif()
 
   ## if we want tail call support
-  if(EMSCRIPTEN_TCO)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Xclang -target-feature -Xclang +tail-call")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Xclang -target-feature -Xclang +tail-call")
-  endif()
+  ## THEY DON'T work with asyncify!!!!
+  ## use them only for external projects for now
+  # if(EMSCRIPTEN_TCO)
+  #   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Xclang -target-feature -Xclang +tail-call")
+  #   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Xclang -target-feature -Xclang +tail-call")
+  # endif()
 endif()
 
 if((WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Debug") OR FORCE_USE_LLD)
@@ -390,8 +392,15 @@ endif()
 
 if(EMSCRIPTEN)
   set(EXTRA_CMAKE_ARGS -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE})
+
   if(EMSCRIPTEN_PTHREADS)
     set(EXTRA_CMAKE_ARGS ${EXTRA_CMAKE_ARGS} -DCMAKE_CXX_FLAGS=-sUSE_PTHREADS=1 -DCMAKE_C_FLAGS=-sUSE_PTHREADS=1)
+  endif()
+
+  if(EMSCRIPTEN_TCO)
+    set(EXTRA_CMAKE_ARGS ${EXTRA_CMAKE_ARGS}
+      -DCMAKE_CXX_FLAGS="-Xclang -target-feature -Xclang +tail-call"
+      -DCMAKE_C_FLAGS="-Xclang -target-feature -Xclang +tail-call")
   endif()
 elseif(IOS)
   add_compile_definitions(CB_NO_HTTP_BLOCKS=1)
