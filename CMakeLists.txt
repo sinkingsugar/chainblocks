@@ -92,16 +92,27 @@ else()
   # MinSizeRel is better for release builds
   # test with node cbl.js -e '(do (def Root (Node)) (schedule Root (Chain "x" (Msg "Hello"))) (run Root 0.1))'
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s INLINING_LIMIT=1 -s DISABLE_EXCEPTION_CATCHING=0 -s ALLOW_MEMORY_GROWTH=1 -s ASYNCIFY=1 -s EXIT_RUNTIME=1 -s MAX_WEBGL_VERSION=2 -s USE_SDL=2")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -s INLINING_LIMIT=1 -s DISABLE_EXCEPTION_CATCHING=0 -s ALLOW_MEMORY_GROWTH=1 -s ASYNCIFY=1 -s EXIT_RUNTIME=1 -s MAX_WEBGL_VERSION=2 -s USE_SDL=2")
   if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s ASSERTIONS=1")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -s ASSERTIONS=1")
     add_compile_options(-g2 -Oz)
   endif()
+
   add_compile_definitions(NO_FORCE_INLINE)
+
   ## if we wanted thread support...
   if(EMSCRIPTEN_PTHREADS)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s USE_PTHREADS=1 -s PTHREAD_POOL_SIZE=2")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -s USE_PTHREADS=1 -s PTHREAD_POOL_SIZE=2")
     add_compile_options(-pthread -Wno-pthreads-mem-growth)
     add_link_options(-pthread)
+  endif()
+
+  ## if we want tail call support
+  if(EMSCRIPTEN_TCO)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Xclang -target-feature -Xclang +tail-call")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Xclang -target-feature -Xclang +tail-call")
   endif()
 endif()
 
