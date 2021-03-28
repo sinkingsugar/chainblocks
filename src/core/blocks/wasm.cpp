@@ -1368,46 +1368,8 @@ struct Run {
   }
 };
 
-struct Parse {
-  std::vector<uint8_t> _buffer;
-  static CBTypesInfo inputTypes() { return CoreInfo::StringType; }
-  static CBTypesInfo outputTypes() { return CoreInfo::BytesType; }
-  CBVar activate(CBContext *context, const CBVar &input) {
-    return awaitne(context, [&]() {
-      std::unique_ptr<wabt::WastLexer> lexer =
-          wabt::WastLexer::CreateBufferLexer(
-              "inline-wasm", input.payload.stringValue, CBSTRLEN(input));
-      std::unique_ptr<wabt::Module> module;
-      wabt::Features features;
-      wabt::WastParseOptions options(features);
-      wabt::Errors errors;
-      wabt::Result result =
-          wabt::ParseWatModule(lexer.get(), &module, &errors, &options);
-      if (wabt::Succeeded(result)) {
-        wabt::MemoryStream stream;
-        wabt::WriteBinaryOptions write_binary_options;
-        write_binary_options.features = features;
-        result = wabt::WriteBinaryModule(&stream, module.get(),
-                                         write_binary_options);
-        if (wabt::Succeeded(result)) {
-          _buffer = stream.output_buffer().data;
-        } else {
-          throw ActivationError("Failed to write wasm binary");
-        }
-      } else {
-        for (const auto &error : errors) {
-          LOG(ERROR) << "wat parse error: " << error.message
-                     << " line: " << error.loc.line;
-        }
-        throw ActivationError("Failed to parse wasm wat code");
-      }
-      return Var(_buffer);
-    });
-  }
-};
-
-struct Render {
-  ParamVar _buffer{};
+struct Asm {
+  std::string _code;
   std::string _entryPoint{"main"};
   std::shared_ptr<M3Environment> _env;
   std::shared_ptr<M3Runtime> _runtime;
@@ -1418,9 +1380,7 @@ struct Render {
   static CBTypesInfo outputTypes() { return CoreInfo::AnyType; }
 
   static inline Parameters params{
-      {"Binary",
-       CBCCSTR("The wasm binary code bytes to execute."),
-       {CoreInfo::NoneType, CoreInfo::BytesType, CoreInfo::BytesVarType}},
+      {"Code", CBCCSTR("The wat code to execute."), {CoreInfo::StringType}},
       {"EntryPoint",
        CBCCSTR("The entry point function to call when activating."),
        {CoreInfo::StringType}},
@@ -1432,7 +1392,7 @@ struct Render {
   void setParam(int index, const CBVar &value) {
     switch (index) {
     case 0:
-      _buffer = value;
+      _code = value.payload.stringValue;
       break;
     case 1:
       _entryPoint = value.payload.stringValue;
@@ -1448,7 +1408,7 @@ struct Render {
   CBVar getParam(int index) {
     switch (index) {
     case 0:
-      return _buffer;
+      return Var(_code);
     case 1:
       return Var(_entryPoint);
     case 2:
@@ -1458,12 +1418,7 @@ struct Render {
     }
   }
 
-  void warmup(CBContext *context) { _buffer.warmup(context); }
-
-  void cleanup() {
-    _buffer.cleanup();
-    _runtime.reset();
-  }
+  void cleanup() { _runtime.reset(); }
 
   void setup() {
     _env.reset(m3_NewEnvironment(), &m3_FreeEnvironment);
@@ -1473,17 +1428,41 @@ struct Render {
   CBVar activate(CBContext *context, const CBVar &input) {
     if (unlikely(!_runtime)) {
       await(context, [&]() {
-        const auto &b = _buffer.get();
-        if (b.valueType == CBType::None) {
-          throw ActivationError("No wasm binary given");
+        std::vector<uint8_t> buffer;
+        std::unique_ptr<wabt::WastLexer> lexer =
+            wabt::WastLexer::CreateBufferLexer("inline-wasm", _code.data(),
+                                               _code.size());
+        std::unique_ptr<wabt::Module> module;
+        wabt::Features features;
+        wabt::WastParseOptions options(features);
+        wabt::Errors errors;
+        wabt::Result result =
+            wabt::ParseWatModule(lexer.get(), &module, &errors, &options);
+        if (wabt::Succeeded(result)) {
+          wabt::MemoryStream stream;
+          wabt::WriteBinaryOptions write_binary_options;
+          write_binary_options.features = features;
+          result = wabt::WriteBinaryModule(&stream, module.get(),
+                                           write_binary_options);
+          if (wabt::Succeeded(result)) {
+            buffer = stream.output_buffer().data;
+          } else {
+            throw ActivationError("Failed to write wasm binary");
+          }
+        } else {
+          for (const auto &error : errors) {
+            LOG(ERROR) << "wat parse error: " << error.message
+                       << " line: " << error.loc.line;
+          }
+          throw ActivationError("Failed to parse wasm wat code");
         }
 
         _runtime.reset(m3_NewRuntime(_env.get(), _stackSize, nullptr),
                        &m3_FreeRuntime);
         assert(_runtime.get());
         IM3Module pmodule;
-        M3Result err = m3_ParseModule(
-            _env.get(), &pmodule, b.payload.bytesValue, b.payload.bytesSize);
+        M3Result err =
+            m3_ParseModule(_env.get(), &pmodule, buffer.data(), buffer.size());
         CHECK_COMPOSE_ERR(err);
 
         err = m3_LoadModule(_runtime.get(), pmodule);
@@ -1515,8 +1494,7 @@ struct Render {
 
 void registerBlocks() {
   REGISTER_CBLOCK("Wasm.Run", Wasm::Run);
-  REGISTER_CBLOCK("Wasm.Parse", Parse);
-  REGISTER_CBLOCK("Wasm.Render", Render);
+  REGISTER_CBLOCK("Wasm.Asm", Asm);
 }
 
 } // namespace Wasm
