@@ -1402,9 +1402,117 @@ struct Parse {
   }
 };
 
+struct Render {
+  ParamVar _buffer{};
+  std::string _entryPoint{"main"};
+  std::shared_ptr<M3Environment> _env;
+  std::shared_ptr<M3Runtime> _runtime;
+  IM3Function _mainFunc{nullptr};
+  size_t _stackSize{1024};
+
+  static CBTypesInfo inputTypes() { return CoreInfo::AnyType; }
+  static CBTypesInfo outputTypes() { return CoreInfo::AnyType; }
+
+  static inline Parameters params{
+      {"Binary",
+       CBCCSTR("The wasm binary code bytes to execute."),
+       {CoreInfo::NoneType, CoreInfo::BytesType, CoreInfo::BytesVarType}},
+      {"EntryPoint",
+       CBCCSTR("The entry point function to call when activating."),
+       {CoreInfo::StringType}},
+      {"StackSize",
+       CBCCSTR("The stack size in kilobytes to use."),
+       {CoreInfo::IntType}}};
+  static CBParametersInfo parameters() { return params; }
+
+  void setParam(int index, const CBVar &value) {
+    switch (index) {
+    case 0:
+      _buffer = value;
+      break;
+    case 1:
+      _entryPoint = value.payload.stringValue;
+      break;
+    case 2:
+      _stackSize = value.payload.intValue;
+      break;
+    default:
+      throw InvalidParameterIndex();
+    }
+  }
+
+  CBVar getParam(int index) {
+    switch (index) {
+    case 0:
+      return _buffer;
+    case 1:
+      return Var(_entryPoint);
+    case 2:
+      return Var(int64_t(_stackSize));
+    default:
+      throw InvalidParameterIndex();
+    }
+  }
+
+  void warmup(CBContext *context) { _buffer.warmup(context); }
+
+  void cleanup() {
+    _buffer.cleanup();
+    _runtime.reset();
+  }
+
+  void setup() {
+    _env.reset(m3_NewEnvironment(), &m3_FreeEnvironment);
+    assert(_env.get());
+  }
+
+  CBVar activate(CBContext *context, const CBVar &input) {
+    if (unlikely(!_runtime)) {
+      await(context, [&]() {
+        const auto &b = _buffer.get();
+        if (b.valueType == CBType::None) {
+          throw ActivationError("No wasm binary given");
+        }
+
+        _runtime.reset(m3_NewRuntime(_env.get(), _stackSize, nullptr),
+                       &m3_FreeRuntime);
+        assert(_runtime.get());
+        IM3Module pmodule;
+        M3Result err = m3_ParseModule(
+            _env.get(), &pmodule, b.payload.bytesValue, b.payload.bytesSize);
+        CHECK_COMPOSE_ERR(err);
+
+        err = m3_LoadModule(_runtime.get(), pmodule);
+        CHECK_COMPOSE_ERR(err);
+
+        err = m3_FindFunction(&_mainFunc, _runtime.get(), _entryPoint.c_str());
+        CHECK_COMPOSE_ERR(err);
+      });
+    }
+
+    const void *valptrs[1];
+    valptrs[0] = &input;
+    M3Result res = m3_Call(_mainFunc, 1, valptrs);
+    if (unlikely(res != 0))
+      throw ActivationError("Failed to call wasm");
+
+    CBVar output{};
+    valptrs[0] = &output;
+    res = m3_GetResults(_mainFunc, 1, valptrs);
+    if (unlikely(res != 0))
+      throw ActivationError("Failed to fetch wasm results");
+
+    auto retType = m3_GetRetType(_mainFunc, 0);
+    output.valueType = retType == c_m3Type_i64 ? CBType::Int : CBType::Float;
+
+    return output;
+  }
+};
+
 void registerBlocks() {
   REGISTER_CBLOCK("Wasm.Run", Wasm::Run);
   REGISTER_CBLOCK("Wasm.Parse", Parse);
+  REGISTER_CBLOCK("Wasm.Render", Render);
 }
 
 } // namespace Wasm
