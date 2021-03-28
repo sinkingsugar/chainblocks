@@ -475,6 +475,21 @@ add_library(libwasm3 STATIC IMPORTED GLOBAL)
 set_target_properties(libwasm3 PROPERTIES IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/wasm3-deps/src/wasm3/source/libm3.a)
 add_dependencies(libwasm3 wasm3)
 
+# wabt
+ExternalProject_Add(wabt
+  URL ${CHAINBLOCKS_DIR}/deps/wabt
+  PREFIX ${CMAKE_CURRENT_BINARY_DIR}/wabt-deps
+  BUILD_IN_SOURCE True
+  CMAKE_ARGS -DCMAKE_BUILD_TYPE=${EXTERNAL_BUILD_TYPE} ${EXTRA_CMAKE_ARGS} -DBUILD_TOOLS=0 -DBUILD_TESTS=0 -DBUILD_LIBWASM=1
+  BUILD_COMMAND cmake --build .
+  INSTALL_COMMAND ""
+  BUILD_BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/wabt-deps/src/wabt/libwabt.a
+)
+
+add_library(libwabt STATIC IMPORTED GLOBAL)
+set_target_properties(libwabt PROPERTIES IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/wabt-deps/src/wabt/libwabt.a)
+add_dependencies(libwabt wabt)
+
 if(NOT BUILD_CORE_ONLY)
   add_compile_definitions(
     CB_WITH_EXTRAS
@@ -926,6 +941,10 @@ target_link_libraries(cb_shared ${BOOST_LIBS} ${EXTRA_LIBS} ${CB_PLATFORM_LIBS} 
 add_dependencies(cb_static libwasm3)
 add_dependencies(cb_shared libwasm3)
 set(EXTRA_LIBS ${EXTRA_LIBS} libwasm3)
+
+add_dependencies(cb_static libwabt)
+add_dependencies(cb_shared libwabt)
+set(EXTRA_LIBS ${EXTRA_LIBS} libwabt)
 
 if(NOT BUILD_CORE_ONLY)
   add_dependencies(cb_static cb_rust_static)
