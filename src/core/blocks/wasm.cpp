@@ -9,6 +9,10 @@
 #include <optional>
 #include <sstream>
 
+#ifdef ZeroMemory
+#undef ZeroMemory
+#endif
+
 #include "config.h"
 #include "src/binary-writer.h"
 #include "src/common.h"
