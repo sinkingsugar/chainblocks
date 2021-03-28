@@ -489,6 +489,8 @@ ExternalProject_Add(wabt
 add_library(libwabt STATIC IMPORTED GLOBAL)
 set_target_properties(libwabt PROPERTIES IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/wabt-deps/src/wabt/libwabt.a)
 add_dependencies(libwabt wabt)
+SET_SOURCE_FILES_PROPERTIES(${CHAINBLOCKS_DIR}/src/core/blocks/wasm.cpp PROPERTIES COMPILE_FLAGS -I${CMAKE_CURRENT_BINARY_DIR}/wabt-deps/src/wabt)
+include_directories(${CHAINBLOCKS_DIR}/deps/wabt)
 
 if(NOT BUILD_CORE_ONLY)
   add_compile_definitions(

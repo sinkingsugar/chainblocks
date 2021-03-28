@@ -9,6 +9,19 @@
 #include <optional>
 #include <sstream>
 
+#include "config.h"
+#include "src/binary-writer.h"
+#include "src/common.h"
+#include "src/error-formatter.h"
+#include "src/feature.h"
+#include "src/filenames.h"
+#include "src/ir.h"
+#include "src/option-parser.h"
+#include "src/resolve-names.h"
+#include "src/stream.h"
+#include "src/validator.h"
+#include "src/wast-parser.h"
+
 // for now a carbon copy of wasm3 simple wasi
 
 #if defined(__clang__)
@@ -1351,7 +1364,48 @@ struct Run {
   }
 };
 
-void registerBlocks() { REGISTER_CBLOCK("Wasm.Run", Wasm::Run); }
+struct Parse {
+  std::vector<uint8_t> _buffer;
+  static CBTypesInfo inputTypes() { return CoreInfo::StringType; }
+  static CBTypesInfo outputTypes() { return CoreInfo::BytesType; }
+  CBVar activate(CBContext *context, const CBVar &input) {
+    return awaitne(context, [&]() {
+      std::unique_ptr<wabt::WastLexer> lexer =
+          wabt::WastLexer::CreateBufferLexer(
+              "inline-wasm", input.payload.stringValue, CBSTRLEN(input));
+      std::unique_ptr<wabt::Module> module;
+      wabt::Features features;
+      wabt::WastParseOptions options(features);
+      wabt::Errors errors;
+      wabt::Result result =
+          wabt::ParseWatModule(lexer.get(), &module, &errors, &options);
+      if (wabt::Succeeded(result)) {
+        wabt::MemoryStream stream;
+        wabt::WriteBinaryOptions write_binary_options;
+        write_binary_options.features = features;
+        result = wabt::WriteBinaryModule(&stream, module.get(),
+                                         write_binary_options);
+        if (wabt::Succeeded(result)) {
+          _buffer = stream.output_buffer().data;
+        } else {
+          throw ActivationError("Failed to write wasm binary");
+        }
+      } else {
+        for (const auto &error : errors) {
+          LOG(ERROR) << "wat parse error: " << error.message
+                     << " line: " << error.loc.line;
+        }
+        throw ActivationError("Failed to parse wasm wat code");
+      }
+      return Var(_buffer);
+    });
+  }
+};
+
+void registerBlocks() {
+  REGISTER_CBLOCK("Wasm.Run", Wasm::Run);
+  REGISTER_CBLOCK("Wasm.Parse", Parse);
+}
 
 } // namespace Wasm
 } // namespace chainblocks
