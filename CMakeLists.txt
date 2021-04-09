@@ -76,10 +76,9 @@ set(CMAKE_CXX_FLAGS_UBSAN
 ### SANITIZERS
 
 if(CODE_COVERAGE)
-  if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-    add_compile_options(-fprofile-arcs -ftest-coverage -fno-default-inline -fno-inline)
-    add_link_options(-fprofile-arcs -ftest-coverage -fno-default-inline -fno-inline)
-  endif()
+  add_compile_options(-fprofile-arcs -ftest-coverage -fno-inline)
+  add_link_options(-fprofile-arcs -ftest-coverage)
+  set(RUST_CODECOV_OPTIONS "-Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=abort ")
 endif()
 
 if (NOT DEFINED CHAINBLOCKS_DIR)
@@ -822,9 +821,9 @@ if(NOT BUILD_CORE_ONLY)
   endif()
 
   if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
-    set(RUSTFLAGS set RUSTFLAGS=${RUST_ARCH}${RUST_LTO}${RUST_CRT})
+    set(RUSTFLAGS set RUSTFLAGS=${RUST_ARCH}${RUST_CODECOV_OPTIONS}${RUST_LTO}${RUST_CRT})
   else()
-    set(RUSTFLAGS export RUSTFLAGS=${RUST_ARCH}${RUST_LTO}${RUST_CRT})
+    set(RUSTFLAGS export RUSTFLAGS=${RUST_ARCH}${RUST_CODECOV_OPTIONS}${RUST_LTO}${RUST_CRT})
   endif()
 
   add_custom_target(

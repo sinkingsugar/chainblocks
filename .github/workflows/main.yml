@@ -158,11 +158,18 @@ jobs:
         sudo apt-get -y update
         sudo apt-get -y install build-essential git cmake wget clang ninja-build libboost-all-dev xorg-dev libdbus-1-dev libssl-dev lcov xvfb mesa-utils
         rustup update
+        rustup default nightly
+        cd rust
+        cargo build --features run_bindgen
     - name: Build
+      env:
+        CARGO_INCREMENTAL: 0
+        CC: /usr/bin/clang
+        CXX: /usr/bin/clang++
       run: |
         mkdir build
         cd build
-        cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBGFX_OPENGL_VERSION=33 -DCODE_COVERAGE=1 ..
+        cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBGFX_OPENGL_VERSION=33 -DSKIP_RUST_BINDGEN=1 -DCODE_COVERAGE=1 ..
         ninja rust_blocks && ninja cbl
     - name: Test
       env:
@@ -222,6 +229,10 @@ jobs:
         sudo apt-get -y update
         sudo apt-get -y install build-essential git cmake wget clang ninja-build libboost-all-dev xorg-dev libdbus-1-dev libssl-dev lcov xvfb mesa-utils unzip
         rustup update
+        rustup default nightly
+        cd rust
+        cargo build --features run_bindgen
+        cd -
         mkdir external && cd external
         git clone --depth 1 https://github.com/KhronosGroup/glTF-Sample-Models.git
         cd -
@@ -235,9 +246,13 @@ jobs:
         cp ../../src/extra/shaders/gltf/*.* lib/gltf/
         cp ../../src/extra/shaders/include/shader.h include/shader.h
     - name: Build
+      env:
+        CARGO_INCREMENTAL: 0
+        CC: /usr/bin/clang
+        CXX: /usr/bin/clang++
       run: |
         cd build
-        cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBGFX_OPENGL_VERSION=33 -DCODE_COVERAGE=1 -DBUILD_INTERNAL_TESTS=1 ..
+        cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBGFX_OPENGL_VERSION=33 -DCODE_COVERAGE=1 -DSKIP_RUST_BINDGEN=1 -DBUILD_INTERNAL_TESTS=1 ..
         ninja rust_blocks && ninja test_runtime && ninja test_extra
     - name: Test
       env:
